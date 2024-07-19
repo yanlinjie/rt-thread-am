@@ -31,7 +31,7 @@ menuconfig:
 	$(MAKE) init
 
 ifneq ($(MAKECMDGOALS),clean)
-update: $(AM_APP_MK)
+update: $(AM_APPS_MK)
 $(AM_APPS_MK): integrate-am-apps.py
 	mkdir -p $(@D)
 	python3 $^ ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE)
