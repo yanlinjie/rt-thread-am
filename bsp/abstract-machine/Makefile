@@ -5,7 +5,7 @@ FILE_TMP = .tmp.$(FILE_MK)
 RTCONFIG_H = rtconfig.h
 
 NAME = rtthread
-SRCS = $(shell find src -name "*.c")
+SRCS = $(shell find src -name "*.c" -o -name "*.S")
 CFLAGS += -DHAVE_CCONFIG_H -D__RTTHREAD__
 CFLAGS += -Wno-nonnull-compare
 LDFLAGS += -T extra.ld

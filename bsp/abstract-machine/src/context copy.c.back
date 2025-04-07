@@ -1,0 +1,114 @@
+#include <am.h>
+#include <klib.h>
+#include <rtthread.h>
+
+rt_thread_t pcb = NULL;
+// rt_thread_t current = NULL;  // 全局变量，记录当前线程
+static Context* ev_handler(Event e, Context *c) {
+  switch (e.event) {
+    case EVENT_YIELD:  {
+      rt_thread_t cp = rt_thread_self(); 
+      rt_ubase_t to = cp->user_data;
+      c = *(Context**)to;
+      // c->mepc += 4;
+      printf(" next to = 0x%08x\n",  (unsigned int)to);
+      printf(" event ID = %d\n", e.event);
+      break;
+    }
+    default: printf("Unhandled event ID = %d\n", e.event); assert(0);
+  }
+  return c;
+}
+void __am_cte_init() {
+  cte_init(ev_handler);
+}
+
+
+void rt_hw_context_switch_to(rt_ubase_t to) {
+   pcb = rt_thread_self();
+  rt_ubase_t user_data_replicator = pcb->user_data;
+  rt_kprintf("[context_switch_to] before switch: pcb->user_data = 0x%08x\n", (unsigned long)pcb->user_data);
+  pcb->user_data = to;
+  rt_kprintf("[context_switch_to] switching to: pcb->user_data = 0x%08x\n", (unsigned long)pcb->user_data);
+  yield();
+  pcb->user_data = user_data_replicator;
+  rt_kprintf("[context_switch_to] after switch: pcb->user_data = 0x%08x\n", (unsigned long)pcb->user_data);
+}
+
+
+void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to) {
+   pcb = rt_thread_self();
+
+  // 打印当前线程结构体指针
+  // printf("[switch] rt_thread_self = %p\n", pcb);
+
+  // 打印旧的 user_data 和新设置的 to
+  rt_ubase_t user_data_replicator = pcb->user_data;
+  printf("[switch] prev user_data = 0x%08x, next to = 0x%08x\n", 
+          (unsigned int)user_data_replicator, (unsigned int)to);
+
+  // 设置目标线程的上下文指针
+  pcb->user_data = to;
+
+  // 保存当前上下文到 from
+  *(Context **)from = pcb->sp;
+  printf("[switch] saved current sp (context) to from = 0x%08x\n", (unsigned int)from);
+
+  // 触发 yield，切换线程
+  printf("[switch] yield start...\n");
+  yield();
+  printf("[switch] yield end (returned back here)\n");
+
+  // 恢复原来的 user_data
+  pcb->user_data = user_data_replicator;
+  printf("[switch] user_data restored to 0x%08x\n", (unsigned int)user_data_replicator);
+  // rt_thread_t pcb = rt_thread_self();
+  // // rt_ubase_t user_data_replicator = pcb->user_data;
+  // // pcb->user_data = to;
+  // // *(Context**)from = pcb->sp;
+  // // yield();
+  // // pcb->user_data = user_data_replicator;
+  assert(0);
+}
+
+
+
+void rt_hw_context_switch_interrupt(void *context, rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread) {
+  assert(0);
+}
+extern void entry_wrapper();  // 在汇编中实现
+// 构造线程上下文
+rt_uint8_t *rt_hw_stack_init(void *tentry, void *parameter, rt_uint8_t *stack_addr, void *texit) {
+  // 1. 对齐栈地址（向下对齐到 uintptr_t 边界）
+  uintptr_t sp = ((uintptr_t)stack_addr) & ~(sizeof(uintptr_t) - 1);
+
+  // 2. 分配 Context 结构体空间
+  Context *ctx = (Context *)(sp - sizeof(Context));
+
+  // 3. 清空
+  memset(ctx, 0, sizeof(Context));
+
+  // 4. 设置 initial PC 为 entry_wrapper
+  ctx->mepc = (uintptr_t)entry_wrapper;
+
+  // 5. 设置初始 mstatus：MPP = 11 (Machine)，MPIE = 1
+  ctx->mstatus = 0x1800;
+
+  // 6. 使用寄存器传参：a0 = parameter, a1 = tentry, a2 = texit
+  ctx->gpr[10] = (uintptr_t)parameter;  // a0
+  ctx->gpr[11] = (uintptr_t)tentry;     // a1
+  ctx->gpr[12] = (uintptr_t)texit;      // a2
+  // 🔍 添加调试信息
+  // printf(">> stack_init: tentry = 0x%08x, texit = 0x%08x, stack = 0x%08x\n",
+  //   (unsigned int)tentry, (unsigned int)texit, (unsigned int)stack_addr);
+// printf(">> ctx->gpr[12] (texit) = 0x%08x\n", (unsigned int)ctx->gpr[12]);
+  printf(">> stack_init: tentry = 0x%x, texit = 0x%x, stack = 0x%x\n", (unsigned int)tentry, (unsigned int)texit, (unsigned int)stack_addr);
+
+
+  return (rt_uint8_t *)ctx;
+}
+
+// void debug_print_hex(uintptr_t val) {
+//   rt_kprintf("[entry_wrapper] a2 (texit) = 0x%08x\n", (unsigned int)val);
+// }
+
